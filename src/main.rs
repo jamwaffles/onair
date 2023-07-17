@@ -4,19 +4,37 @@ use std::process::Command;
 #[tokio::main]
 async fn main() {
     // build our application with a single route
-    let app = Router::new().route(
-        "/",
-        get(|| async {
-            let mic_status = mic_status().await;
-            let cam_status = cam_status().await;
+    let app = Router::new()
+        .route(
+            "/webcam",
+            get(|| async {
+                let cam_status = cam_status().await;
 
-            serde_json::json!({
-                "webcam": cam_status,
-                "mic": mic_status,
-            })
-            .to_string()
-        }),
-    );
+                let out = serde_json::json!({
+                    "webcam": { "is_on": cam_status },
+
+                });
+
+                println!("Poll webcam {:?}", out);
+
+                out.to_string()
+            }),
+        )
+        .route(
+            "/mic",
+            get(|| async {
+                let mic_status = mic_status().await;
+
+                let out = serde_json::json!({
+
+                    "mic": { "is_on": mic_status },
+                });
+
+                println!("Poll mic {:?}", out);
+
+                out.to_string()
+            }),
+        );
 
     // run it with hyper on localhost:3000
     axum::Server::bind(&"0.0.0.0:6969".parse().unwrap())
@@ -26,9 +44,10 @@ async fn main() {
 }
 
 async fn cam_status() -> bool {
-    let out = Command::new("fuser")
+    let out = tokio::process::Command::new("fuser")
         .arg("/dev/video0")
         .output()
+        .await
         .unwrap()
         .stdout;
 
@@ -42,23 +61,46 @@ async fn cam_status() -> bool {
 async fn mic_status() -> bool {
     let devices = std::fs::read_dir("/dev/snd").unwrap();
 
-    let in_use = devices
+    let it = devices
         .filter_map(|entry| entry.ok())
-        .filter(|device| device.file_name().into_string().unwrap().starts_with("pcm"))
-        .filter(|entry| {
-            let out = Command::new("fuser")
-                .arg(entry.path())
-                .output()
-                .unwrap()
-                .stdout;
+        .filter(|device| device.file_name().into_string().unwrap().starts_with("pcm"));
 
-            let output = String::from_utf8_lossy(&out);
+    for device in it {
+        let out = tokio::process::Command::new("fuser")
+            .arg(device.path())
+            .output()
+            .await
+            .unwrap()
+            .stdout;
 
-            let lines = output.lines().count();
+        let output = String::from_utf8_lossy(&out);
 
-            lines > 0
-        })
-        .count();
+        let lines = output.lines().count();
 
-    in_use > 0
+        if lines > 0 {
+            return true;
+        }
+    }
+
+    false
+
+    // let in_use = devices
+    //     .filter_map(|entry| entry.ok())
+    //     .filter(|device| device.file_name().into_string().unwrap().starts_with("pcm"))
+    //     .filter(|entry| {
+    //         let out = Command::new("fuser")
+    //             .arg(entry.path())
+    //             .output()
+    //             .unwrap()
+    //             .stdout;
+
+    //         let output = String::from_utf8_lossy(&out);
+
+    //         let lines = output.lines().count();
+
+    //         lines > 0
+    //     })
+    //     .count();
+
+    // in_use > 0
 }
