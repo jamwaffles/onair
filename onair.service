@@ -1,0 +1,13 @@
+[Unit]
+Description=Run a small webserver to let Home Assistant know if mic or cam is in use
+
+[Service]
+Type=simple
+#User=
+#Group=
+ExecStart=/usr/local/bin/onair
+Restart=on-failure
+After=network.target
+
+[Install]
+WantedBy=default.target
