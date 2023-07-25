@@ -44,15 +44,21 @@ async fn main() {
 
 async fn cam_status() -> bool {
     let out = tokio::process::Command::new("fuser")
+        .arg("-v")
         .arg("/dev/video0")
         .output()
         .await
         .unwrap()
-        .stdout;
+        .stderr;
 
     let output = String::from_utf8_lossy(&out);
 
-    let lines = output.lines().count();
+    let lines = output
+        .trim()
+        .lines()
+        // Ignore header and droidcam process
+        .filter(|line| !line.contains("COMMAND") && !line.contains("droidcam"))
+        .count();
 
     lines > 0
 }
