@@ -1,5 +1,4 @@
 use axum::{routing::get, Router};
-use std::process::Command;
 
 #[tokio::main]
 async fn main() {
@@ -59,48 +58,59 @@ async fn cam_status() -> bool {
 }
 
 async fn mic_status() -> bool {
-    let devices = std::fs::read_dir("/dev/snd").unwrap();
+    // /dev/snd method
+    // ---
 
-    let it = devices
-        .filter_map(|entry| entry.ok())
-        .filter(|device| device.file_name().into_string().unwrap().starts_with("pcm"));
+    // let devices = std::fs::read_dir("/dev/snd").unwrap();
 
-    for device in it {
-        let out = tokio::process::Command::new("fuser")
-            .arg(device.path())
-            .output()
-            .await
-            .unwrap()
-            .stdout;
-
-        let output = String::from_utf8_lossy(&out);
-
-        let lines = output.lines().count();
-
-        if lines > 0 {
-            return true;
-        }
-    }
-
-    false
-
-    // let in_use = devices
+    // let it = devices
     //     .filter_map(|entry| entry.ok())
-    //     .filter(|device| device.file_name().into_string().unwrap().starts_with("pcm"))
-    //     .filter(|entry| {
-    //         let out = Command::new("fuser")
-    //             .arg(entry.path())
-    //             .output()
-    //             .unwrap()
-    //             .stdout;
+    //     .filter(|device| device.file_name().into_string().unwrap().starts_with("pcm"));
 
-    //         let output = String::from_utf8_lossy(&out);
+    // for device in it {
+    //     let out = tokio::process::Command::new("fuser")
+    //         .arg(device.path())
+    //         .output()
+    //         .await
+    //         .unwrap()
+    //         .stdout;
 
-    //         let lines = output.lines().count();
+    //     let output = String::from_utf8_lossy(&out);
 
-    //         lines > 0
-    //     })
-    //     .count();
+    //     let lines = output.lines().count();
 
-    // in_use > 0
+    //     if lines > 0 {
+    //         return true;
+    //     }
+    // }
+
+    // false
+
+    // Pulseaudio method
+    // ---
+
+    let mic_search = "Razer";
+
+    let out = tokio::process::Command::new("pacmd")
+        .arg("list-sources")
+        .output()
+        .await
+        .unwrap()
+        .stdout;
+
+    let output = String::from_utf8_lossy(&out);
+
+    let lines = output.lines();
+
+    // Find output lines belonging to our search device
+    let mut device_lines =
+        lines.skip_while(|line| !(line.contains("name:") && line.contains(mic_search)));
+
+    let status = device_lines
+        .find(|line| line.contains("state:"))
+        .expect("No status line");
+
+    let state = status.split_whitespace().last().expect("No status part");
+
+    state == "RUNNING"
 }
