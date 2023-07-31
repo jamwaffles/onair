@@ -53,6 +53,12 @@ async fn cam_status() -> bool {
 
     let output = String::from_utf8_lossy(&out);
 
+    // Look for successful output headers. If not present, device might not be connected so we call
+    // it `false.
+    if !output.contains("USER PID ACCESS") {
+        return false;
+    }
+
     let lines = output
         .trim()
         .lines()
