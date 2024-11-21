@@ -118,11 +118,90 @@ async fn mic_status() -> bool {
     let mut device_lines =
         lines.skip_while(|line| !(line.contains("name:") && line.contains(mic_search)));
 
-    let status = device_lines
+    if let Some(state) = device_lines
         .find(|line| line.contains("state:"))
-        .expect("No status line");
+        .and_then(|status| status.split_whitespace().last())
+    {
+        return state == "RUNNING";
+    }
 
-    let state = status.split_whitespace().last().expect("No status part");
+    // Pipewire method
+    // ---
 
-    state == "RUNNING"
+    // We're looking for this output:
+    //
+    //     id 51, type PipeWire:Interface:Node/3
+    //         object.serial = "51"
+    //         object.path = "alsa:pcm:2:hw:2:capture"
+    //         factory.id = "18"
+    //         client.id = "35"
+    //         device.id = "44"
+    //         priority.session = "2000"
+    //         priority.driver = "2000"
+    //         node.description = "Razer Seiren Mini Mono"
+    //         node.name = "alsa_input.usb-Razer_Inc_Razer_Seiren_Mini_UC2114L03205445-00.mono-fallback"
+    //         node.nick = "Razer Seiren Mini"
+    //         media.class = "Audio/Source"
+    //
+    // Note that the indentation uses tabs, not spaces. We want the `51` ID on the first line.
+
+    let out = tokio::process::Command::new("pw-cli")
+        .arg("ls")
+        .output()
+        .await
+        .unwrap()
+        .stdout;
+
+    let output = String::from_utf8_lossy(&out);
+
+    let lines = output.lines();
+
+    let pipewire_node_id = {
+        let mut curr_id = 0;
+        let mut found_id = None;
+
+        for line in lines {
+            if line.contains("\tid ") {
+                let mut chunks = line.split_ascii_whitespace();
+
+                curr_id = chunks
+                    .nth(1)
+                    .expect("Not enough chunks")
+                    .split(",")
+                    .next()
+                    .unwrap()
+                    .parse::<i32>()
+                    .expect("Bad number");
+            }
+
+            if line.contains("node.description") && line.contains("Razer Seiren Mini Mono") {
+                found_id = Some(curr_id);
+
+                break;
+            }
+        }
+
+        found_id
+    };
+
+    let Some(pipewire_node_id) = pipewire_node_id else {
+        println!("No mic ID");
+
+        return false;
+    };
+
+    let out = tokio::process::Command::new("pw-cli")
+        .arg("info")
+        .arg(pipewire_node_id.to_string())
+        .output()
+        .await
+        .unwrap()
+        .stdout;
+
+    let output = String::from_utf8_lossy(&out);
+
+    output
+        .lines()
+        .find(|line| line.contains("state: \"running\""))
+        .is_some()
 }

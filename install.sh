@@ -2,6 +2,8 @@
 
 set -ex
 
+sudo apt install libpipewire-0.3-dev -y
+
 cargo build --release
 
 sudo cp ./target/release/onair /usr/local/bin/onair
